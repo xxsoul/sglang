@@ -284,19 +284,38 @@ def _dcp_replicate_q_proj_default(cfg: Any, model: str) -> dict:
 @_register_for("KimiK3ForConditionalGeneration", "KimiK31ForConditionalGeneration")
 def _kimi_k3_moe_runner_overrides(server_args: Any, hf_config: Any) -> dict:
     # MoE runner default, independent of the attention-backend gate above.
-    # trtllm-gen fused MoE (flashinfer_mxfp4) beats marlin on both the decode
-    # (M=bs) and the target-verify (M=bs*(gamma+1)) regimes on SM100/SM103.
-    # SM107 uses the same packed-MXFP4 runner; leaving auto unresolved falls
-    # back to BF16 weight materialization during model loading.
+    # flashinfer_mxfp4 (trtllm-gen) on SM100/SM103/SM107; packed-MXFP4 Marlin
+    # on SM90/SM120. Unresolved auto materializes BF16 experts at load.
     cfg = resolving_view(server_args)
     if cfg.moe_runner_backend != "auto":
         return {}
-    if not (get_platform().is_sm100 and get_platform().device_sm in (100, 103, 107)):
-        return {}
     if not _is_mxfp4_pack_quantized(hf_config):
         return {}
-    logger.info(
-        "Kimi-K3 on SM100/SM103/SM107: moe_runner_backend=flashinfer_mxfp4 "
-        "(FlashInfer SiTU kernels)."
-    )
-    return {"moe_runner_backend": "flashinfer_mxfp4"}
+    device_sm = get_platform().device_sm
+    if get_platform().is_sm100 and device_sm in (100, 103, 107):
+        # trtllm-gen fused MoE beats marlin on both the decode (M=bs) and the
+        # target-verify (M=bs*(gamma+1)) regimes on SM100/SM103.
+        logger.info(
+            f"Kimi-K3/K3.1 on SM{device_sm}: moe_runner_backend=flashinfer_mxfp4 "
+            "(FlashInfer SiTU kernels)."
+        )
+        return {"moe_runner_backend": "flashinfer_mxfp4"}
+    # Matches the three-major whitelist of the Marlin prep gate in mxfp4.py
+    # (is_sm90 / is_sm100 / is_sm120); SM110 gets neither runner path yet.
+    if get_platform().is_sm90 or get_platform().is_sm120:
+        if cfg.moe_a2a_backend not in (None, "none"):
+            # Marlin registers a fused MoE op for a2a=none only; no SM90 runner
+            # pairs MXFP4 weights with a deepep-style dispatcher.
+            raise ValueError(
+                f"Kimi-K3/K3.1 on SM{device_sm}: moe_a2a_backend="
+                f"{cfg.moe_a2a_backend} is incompatible with the MXFP4 Marlin "
+                "runner this GPU needs. Unset the CP/a2a options that select it, "
+                "or pin both --moe-runner-backend and --moe-a2a-backend explicitly."
+            )
+        # Keeps the checkpoint's MXFP4 weights packed with no new dependency.
+        logger.info(
+            f"Kimi-K3/K3.1 on SM{device_sm}: moe_runner_backend=marlin "
+            "(packed MXFP4 W4A16)."
+        )
+        return {"moe_runner_backend": "marlin"}
+    return {}

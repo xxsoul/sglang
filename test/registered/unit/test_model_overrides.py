@@ -4760,6 +4760,111 @@ class TestKimiK31LosslessDefaults(CustomTestCase):
         )
 
 
+class TestKimiK3MoeRunnerOverrides(CustomTestCase):
+    """K3.1-on-H200 incident: with the MoE runner left at auto, an mxfp4
+    checkpoint on SM90 materialized expert weights as BF16 during model load
+    (~175GB/rank at EP32 vs. 141GB HBM) and OOMed at startup. Off the listed
+    Blackwell targets the default must keep weights packed (Marlin) whenever
+    the a2a endpoint supports it; a deepep-style dispatcher must stop at
+    config time instead of reaching the unregistered (a2a, marlin) fused op.
+    """
+
+    @staticmethod
+    def _hf_mxfp4():
+        return SimpleNamespace(
+            text_config=SimpleNamespace(
+                quantization_config={
+                    "config_groups": {"g0": {"format": "mxfp4-pack-quantized"}}
+                }
+            )
+        )
+
+    @staticmethod
+    def _args(**fields):
+        args = SimpleNamespace(
+            moe_runner_backend="auto", moe_a2a_backend="none"
+        )
+        for name, value in fields.items():
+            setattr(args, name, value)
+        return args
+
+    @staticmethod
+    def _overrides(server_args, hf_config, **platform):
+        from sglang.srt.arg_groups.model_overrides import kimi_k3 as kimi_k3_module
+
+        with override_platform(**platform):
+            return kimi_k3_module._kimi_k3_moe_runner_overrides(
+                server_args, hf_config
+            )
+
+    def test_sm90_defaults_to_marlin(self):
+        self.assertEqual(
+            self._overrides(self._args(), self._hf_mxfp4(), is_sm90=True, device_sm=90),
+            {"moe_runner_backend": "marlin"},
+        )
+
+    def test_sm100_family_stays_flashinfer_mxfp4(self):
+        for sm in (100, 103, 107):
+            with self.subTest(sm=sm):
+                self.assertEqual(
+                    self._overrides(
+                        self._args(), self._hf_mxfp4(), is_sm100=True, device_sm=sm
+                    ),
+                    {"moe_runner_backend": "flashinfer_mxfp4"},
+                )
+
+    def test_sm120_defaults_to_marlin(self):
+        self.assertEqual(
+            self._overrides(
+                self._args(), self._hf_mxfp4(), is_sm120=True, device_sm=120
+            ),
+            {"moe_runner_backend": "marlin"},
+        )
+
+    def test_sm110_keeps_auto(self):
+        # The Marlin prep gate in mxfp4.py only whitelists SM90/SM100/SM120;
+        # defaulting SM110 to marlin would raise at weight load. It stays auto
+        # until the gate learns a major-11 path. All is_* probes are overridden:
+        # unset ones would probe the host GPU and flip this on an H200 box.
+        self.assertEqual(
+            self._overrides(
+                self._args(),
+                self._hf_mxfp4(),
+                is_sm90=False,
+                is_sm100=False,
+                is_sm120=False,
+                device_sm=110,
+            ),
+            {},
+        )
+
+    def test_deepep_dispatcher_rejected_at_config_time_on_sm90(self):
+        with self.assertRaisesRegex(ValueError, "moe-a2a-backend"):
+            self._overrides(
+                self._args(moe_a2a_backend="deepep"),
+                self._hf_mxfp4(),
+                is_sm90=True,
+                device_sm=90,
+            )
+
+    def test_explicit_runner_wins_on_sm90(self):
+        self.assertEqual(
+            self._overrides(
+                self._args(moe_runner_backend="flashinfer_mxfp4"),
+                self._hf_mxfp4(),
+                is_sm90=True,
+                device_sm=90,
+            ),
+            {},
+        )
+
+    def test_non_mxfp4_checkpoint_untouched_on_sm90(self):
+        hf = SimpleNamespace(text_config=SimpleNamespace(quantization_config=None))
+        self.assertEqual(
+            self._overrides(self._args(), hf, is_sm90=True, device_sm=90), {}
+        )
+
+
 class TestDeterministicAttentionBackendOnXpu(unittest.TestCase):
     """The deterministic fallback must not hand XPU a CUDA-only backend.
 
