@@ -77,9 +77,13 @@ RUN python3 -m venv /opt/sgl-eval-venv \
 
 COPY docker/k31-image/ /opt/k31-image/
 
-# FlashInfer DynBlock raised to 1024 experts (K3.1 has 896), jit-cache modules
-# rebuilt in place; Prims-TS overlay for --dsa-*-backend prims_ts; Dynamo runtime
-# with K3.1 patches. Each script is a no-op when its marker matches.
+# Three separate RUNs so a late failure (overlay/dynamo) does not recompile
+# the ~10-minute DynBlock modules on retry. Each script is marker-idempotent.
+RUN python3 /opt/k31-image/patch_flashinfer.py \
+    && python3 /opt/k31-image/build_flashinfer_dynblock.py
+
+RUN python3 /opt/k31-image/overlay_flashinfer_prims_ts.py
+
 RUN export PIP_INDEX_URL="${PIP_INDEX_URL:-https://pypi.org/simple}" \
     && if [ -n "${K31_RUST_MIRROR:-}" ]; then \
          export RUSTUP_DIST_SERVER="https://${K31_RUST_MIRROR}" \
@@ -87,9 +91,6 @@ RUN export PIP_INDEX_URL="${PIP_INDEX_URL:-https://pypi.org/simple}" \
          K31_RUSTUP_INIT_URL="https://${K31_RUST_MIRROR}/rustup-init.sh" \
          K31_CARGO_MIRROR="sparse+https://${K31_RUST_MIRROR}/index/"; \
        fi \
-    && python3 /opt/k31-image/patch_flashinfer.py \
-    && python3 /opt/k31-image/build_flashinfer_dynblock.py \
-    && python3 /opt/k31-image/overlay_flashinfer_prims_ts.py \
     && python3 /opt/k31-image/build_dynamo.py
 
 # Fails the build if a DynBlock module was not rebuilt, the overlays are missing,
