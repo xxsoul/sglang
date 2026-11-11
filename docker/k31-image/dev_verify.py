@@ -16,8 +16,17 @@ def _check(cond: bool, ok: str, fail: str) -> None:
 
 
 def run_build_time() -> None:
+    import importlib.util
+
     import torch
 
+    # Source-free invariant: sglang arrives via the runtime clone and its
+    # editable install; the baked floor must not contain it.
+    _check(
+        importlib.util.find_spec("sglang") is None,
+        "sglang absent from the dependency floor",
+        "sglang present at build; the base editable uninstall is broken",
+    )
     importlib.import_module("pytest")
     from packaging.version import Version
 
