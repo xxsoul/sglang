@@ -77,7 +77,9 @@ RUN python3 -m venv /opt/sgl-eval-venv \
     && /opt/sgl-eval-venv/bin/pip install -q sgl-eval==0.1.3
 
 # Minimal stable toolchain for the runtime `pip install -e`, which builds the
-# Rust TreeCore extension (setup.py auto-discovers it when cargo is on PATH).
+# Rust TreeCore extension (setup.py auto-discovers it when cargo is on PATH);
+# K31_RUST_MIRROR additionally persists a crates.io source replacement into
+# /opt/cargo/config.toml for that runtime build.
 # build_dynamo.py still uses its own short-lived toolchain in a temp dir.
 ENV RUSTUP_HOME=/opt/rustup CARGO_HOME=/opt/cargo
 ENV PATH="/opt/cargo/bin:${PATH}"
@@ -87,7 +89,11 @@ RUN if [ -n "${K31_RUST_MIRROR:-}" ]; then \
          K31_RUSTUP_INIT_URL="https://${K31_RUST_MIRROR}/rustup-init.sh"; \
        fi \
     && curl --proto '=https' --tlsv1.2 -sSf "${K31_RUSTUP_INIT_URL:-https://sh.rustup.rs}" \
-        | sh -s -- -y --profile minimal --default-toolchain stable --no-modify-path
+        | sh -s -- -y --profile minimal --default-toolchain stable --no-modify-path \
+    && if [ -n "${K31_RUST_MIRROR:-}" ]; then \
+         printf '[source.crates-io]\nreplace-with = "k31-mirror"\n[source.k31-mirror]\nregistry = "sparse+https://%s/index/"\n' \
+           "${K31_RUST_MIRROR}" > /opt/cargo/config.toml; \
+       fi
 
 # Scripts copy per-stage so editing one never recompiles a neighbor layer;
 # new scripts join the COPY of the stage they serve. Marker-idempotent.
