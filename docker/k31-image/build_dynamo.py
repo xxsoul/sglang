@@ -111,16 +111,34 @@ def main() -> None:
             os.environ, RUSTUP_HOME=str(tmp / "rustup"), CARGO_HOME=str(tmp / "cargo")
         )
         env["PATH"] = f"{tmp / 'cargo/bin'}:{env['PATH']}"
+        rustup_init = os.environ.get("K31_RUSTUP_INIT_URL", "https://sh.rustup.rs")
         run(
             "bash",
             "-c",
-            "curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs"
+            f"curl --proto '=https' --tlsv1.2 -sSf {rustup_init}"
             " | sh -s -- -y --profile minimal --default-toolchain none --no-modify-path",
             cwd=tmp,
             env=env,
         )
+        cargo_mirror = os.environ.get("K31_CARGO_MIRROR")
+        if cargo_mirror:
+            # crates-io source replacement for throttled registries,
+            # e.g. sparse+https://rsproxy.cn/index/
+            cargo_home = tmp / "cargo"
+            cargo_home.mkdir(parents=True, exist_ok=True)
+            (cargo_home / "config.toml").write_text(
+                '[source.crates-io]\nreplace-with = "k31-mirror"\n'
+                f'[source.k31-mirror]\nregistry = "{cargo_mirror}"\n'
+            )
         src = tmp / "dynamo"
-        run("git", "clone", "--quiet", DYNAMO_REPO, str(src), cwd=tmp)
+        run(
+            "git",
+            "clone",
+            "--quiet",
+            os.environ.get("K31_DYNAMO_REPO", DYNAMO_REPO),
+            str(src),
+            cwd=tmp,
+        )
         run("git", "checkout", "--quiet", DYNAMO_COMMIT, cwd=src)
         for patch in PATCHES:
             run("git", "apply", str(patch), cwd=src)

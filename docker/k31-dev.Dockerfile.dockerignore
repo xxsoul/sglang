@@ -1,0 +1,5 @@
+# The image carries no source tree; build context needs only the helper
+# scripts and the dependency lock. BuildKit picks this file up automatically
+# next to k31-dev.Dockerfile.
+*
+!docker/k31-image/**
