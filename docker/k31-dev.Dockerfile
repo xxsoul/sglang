@@ -1,9 +1,10 @@
 # syntax=docker/dockerfile:1.7
 # All-in-one dev/verify image for Kimi-K3.1 work on port/kimi-k31-pro (H200
-# target). Everything pip/cargo could need for the near term is baked in;
-# the sglang source tree is NOT -- clone or mount a checkout at runtime and
-# `pip install -e "python[test]"`, which the dependency floor then resolves
-# offline in seconds.
+# target). Everything pip/cargo could need for the near term is baked in
+# (cargo included, so the editable install also compiles the Rust TreeCore
+# extension); the sglang source tree is NOT -- clone or mount a checkout at
+# runtime and `pip install -e "python[test]"`, which the dependency floor
+# then resolves offline in seconds.
 #
 # Build from the repo root (no GPU needed; only docker/k31-image/ is sent):
 #   docker buildx build -f docker/k31-dev.Dockerfile -t k31-dev:<tag> --load .
@@ -75,15 +76,31 @@ RUN python3 -m venv /opt/sgl-eval-venv \
     && export PIP_INDEX_URL="${PIP_INDEX_URL:-https://pypi.org/simple}" \
     && /opt/sgl-eval-venv/bin/pip install -q sgl-eval==0.1.3
 
-COPY docker/k31-image/ /opt/k31-image/
+# Minimal stable toolchain for the runtime `pip install -e`, which builds the
+# Rust TreeCore extension (setup.py auto-discovers it when cargo is on PATH).
+# build_dynamo.py still uses its own short-lived toolchain in a temp dir.
+ENV RUSTUP_HOME=/opt/rustup CARGO_HOME=/opt/cargo
+ENV PATH="/opt/cargo/bin:${PATH}"
+RUN if [ -n "${K31_RUST_MIRROR:-}" ]; then \
+         export RUSTUP_DIST_SERVER="https://${K31_RUST_MIRROR}" \
+         RUSTUP_UPDATE_ROOT="https://${K31_RUST_MIRROR}/rustup" \
+         K31_RUSTUP_INIT_URL="https://${K31_RUST_MIRROR}/rustup-init.sh"; \
+       fi \
+    && curl --proto '=https' --tlsv1.2 -sSf "${K31_RUSTUP_INIT_URL:-https://sh.rustup.rs}" \
+        | sh -s -- -y --profile minimal --default-toolchain stable --no-modify-path
 
-# Three separate RUNs so a late failure (overlay/dynamo) does not recompile
-# the ~10-minute DynBlock modules on retry. Each script is marker-idempotent.
+# Scripts copy per-stage so editing one never recompiles a neighbor layer;
+# new scripts join the COPY of the stage they serve. Marker-idempotent.
+COPY docker/k31-image/patch_flashinfer.py \
+    docker/k31-image/build_flashinfer_dynblock.py /opt/k31-image/
 RUN python3 /opt/k31-image/patch_flashinfer.py \
     && python3 /opt/k31-image/build_flashinfer_dynblock.py
 
+COPY docker/k31-image/overlay_flashinfer_prims_ts.py /opt/k31-image/
 RUN python3 /opt/k31-image/overlay_flashinfer_prims_ts.py
 
+COPY docker/k31-image/build_dynamo.py \
+    docker/k31-image/dynamo/ /opt/k31-image/
 RUN export PIP_INDEX_URL="${PIP_INDEX_URL:-https://pypi.org/simple}" \
     && if [ -n "${K31_RUST_MIRROR:-}" ]; then \
          export RUSTUP_DIST_SERVER="https://${K31_RUST_MIRROR}" \
@@ -93,9 +110,10 @@ RUN export PIP_INDEX_URL="${PIP_INDEX_URL:-https://pypi.org/simple}" \
        fi \
     && python3 /opt/k31-image/build_dynamo.py
 
-# Fails the build if a DynBlock module was not rebuilt, the overlays are missing,
-# or the Rust TreeCore does not load. Re-run verify_image.py any time (no GPU,
-# no source tree needed); dev_verify.py --build-time checks the dependency floor.
+# Fails the build if a DynBlock module was not rebuilt or the overlays are
+# missing. Re-run verify_image.py any time (no GPU, no source tree needed);
+# dev_verify.py --build-time checks the dependency floor.
+COPY docker/k31-image/verify_image.py docker/k31-image/dev_verify.py /opt/k31-image/
 RUN python3 /opt/k31-image/verify_image.py \
     && python3 /opt/k31-image/dev_verify.py --build-time \
     && echo "k31-dev lock $(sha256sum /opt/k31-image/k31-dev.lock | cut -c1-12)"

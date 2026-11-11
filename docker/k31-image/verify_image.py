@@ -6,10 +6,12 @@ Runs inside the image without a GPU, so it checks artifacts rather than loading 
   (build_flashinfer_dynblock.py marker), so a flashinfer upgrade cannot silently undo it;
 - the FlashInfer Prims-TS overlay (overlay_flashinfer_prims_ts.py) and the patched Dynamo runtime
   (build_dynamo.py) are installed and unchanged since they were made;
-- the Rust TreeCore extension loads.
+- the Rust TreeCore extension loads -- only when sglang is installed; source-free
+  images (k31-dev) defer that probe to dev_verify.py after the runtime install.
 """
 
 import hashlib
+import importlib.util
 import json
 import re
 import subprocess
@@ -100,16 +102,25 @@ for name, marker in (
             f"dynamo/sglang/{name} lacks the K3.1 edit {marker!r} (build_dynamo.py)"
         )
 
-tree_core = subprocess.run(
-    [sys.executable, "-c", "from sglang.srt.mem_cache.rust_tree_core import extension"],
-    cwd="/tmp",
-    capture_output=True,
-    text=True,
-    timeout=600,
-)
-print(f"Rust TreeCore import: exit {tree_core.returncode}")
-if tree_core.returncode != 0:
-    errors.append(f"Rust TreeCore does not load:\n{tree_core.stderr[-2000:]}")
+if importlib.util.find_spec("sglang") is None:
+    # Source-free images (k31-dev): sglang and TreeCore arrive via the runtime
+    # clone + editable install; dev_verify.py probes them there.
+    print("Rust TreeCore import: skipped (no sglang installed)")
+else:
+    tree_core = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            "from sglang.srt.mem_cache.rust_tree_core import extension",
+        ],
+        cwd="/tmp",
+        capture_output=True,
+        text=True,
+        timeout=600,
+    )
+    print(f"Rust TreeCore import: exit {tree_core.returncode}")
+    if tree_core.returncode != 0:
+        errors.append(f"Rust TreeCore does not load:\n{tree_core.stderr[-2000:]}")
 
 if errors:
     sys.exit("image verification failed:\n- " + "\n- ".join(errors))

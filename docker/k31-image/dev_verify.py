@@ -85,6 +85,21 @@ def run_runtime() -> None:
     )
 
     _check(True, "Marlin fp4 weight-prep importable", "")
+    import subprocess
+
+    # Built by the editable install (setup.py auto-discovers the Rust workspace
+    # when cargo is on PATH); a silent fallback only costs radix-cache perf.
+    tree = subprocess.run(
+        [sys.executable, "-c", "from sglang.srt.mem_cache.rust_tree_core import extension"],
+        capture_output=True,
+        text=True,
+    )
+    _check(
+        tree.returncode == 0,
+        "Rust TreeCore extension loads",
+        f"Rust TreeCore missing:\n{tree.stderr[-800:]}\n"
+        're-run pip install -e "python[test]" with cargo on PATH',
+    )
     if n >= 2:
         cuda_p2p = torch.cuda.can_device_access_peer(0, 1)
         print(f"P2P GPU0<->GPU1: {cuda_p2p} (NVLink expected on the H200 node)")
