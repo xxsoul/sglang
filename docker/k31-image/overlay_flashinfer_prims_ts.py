@@ -55,7 +55,7 @@ def main() -> None:
             print(f"Prims-TS already overlaid from flashinfer {FLASHINFER_COMMIT[:8]}")
             return
 
-    # codeload served the whole-repo tarball; mirror via K31_FLASHINFER_ARCHIVE_URL
+    # codeload serves the whole-repo tarball; mirror via K31_FLASHINFER_ARCHIVE_URL
     # when github is throttled (any URL returning the same tar.gz works).
     url = os.environ.get(
         "K31_FLASHINFER_ARCHIVE_URL",
