@@ -105,8 +105,10 @@ RUN python3 /opt/k31-image/patch_flashinfer.py \
 COPY docker/k31-image/overlay_flashinfer_prims_ts.py /opt/k31-image/
 RUN python3 /opt/k31-image/overlay_flashinfer_prims_ts.py
 
-COPY docker/k31-image/build_dynamo.py \
-    docker/k31-image/dynamo/ /opt/k31-image/
+# COPY of a directory copies its contents, so the patches need their own
+# destination to keep the build_dynamo.py-relative dynamo/ layout.
+COPY docker/k31-image/build_dynamo.py /opt/k31-image/
+COPY docker/k31-image/dynamo /opt/k31-image/dynamo
 RUN export PIP_INDEX_URL="${PIP_INDEX_URL:-https://pypi.org/simple}" \
     && if [ -n "${K31_RUST_MIRROR:-}" ]; then \
          export RUSTUP_DIST_SERVER="https://${K31_RUST_MIRROR}" \
