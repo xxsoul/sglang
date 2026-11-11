@@ -33,11 +33,25 @@ TARGET = SITE / SUBDIR
 MARKER = TARGET / "k31-prims-ts.json"
 
 
+def resolve_archive_url(env: dict) -> str:
+    # An unset build-arg is injected as an empty string; fall back on truthiness.
+    return env.get("K31_FLASHINFER_ARCHIVE_URL") or (
+        f"https://codeload.github.com/flashinfer-ai/flashinfer/tar.gz/{FLASHINFER_COMMIT}"
+    )
+
+
 def tree_sha256(root: Path) -> str:
     digest = hashlib.sha256()
     for path in sorted(root.rglob("*.py")):
         digest.update(str(path.relative_to(root)).encode() + b"\0" + path.read_bytes())
     return digest.hexdigest()
+
+
+def resolve_archive_url(env) -> str:
+    # ARG-injected vars arrive as empty strings; fall back on truthiness.
+    return env.get("K31_FLASHINFER_ARCHIVE_URL") or (
+        f"https://codeload.github.com/flashinfer-ai/flashinfer/tar.gz/{FLASHINFER_COMMIT}"
+    )
 
 
 def main() -> None:
@@ -55,12 +69,9 @@ def main() -> None:
             print(f"Prims-TS already overlaid from flashinfer {FLASHINFER_COMMIT[:8]}")
             return
 
-    # codeload serves the whole-repo tarball; mirror via K31_FLASHINFER_ARCHIVE_URL
-    # when github is throttled (any URL returning the same tar.gz works). The ARG
-    # injects an empty string, so the default must ride on truthiness, not .get().
-    url = os.environ.get("K31_FLASHINFER_ARCHIVE_URL") or (
-        f"https://codeload.github.com/flashinfer-ai/flashinfer/tar.gz/{FLASHINFER_COMMIT}"
-    )
+    # codeload serves the whole-repo tarball; any URL returning the same tar.gz
+    # works when github is throttled.
+    url = resolve_archive_url(os.environ)
     with urllib.request.urlopen(url, timeout=600) as response:
         archive = tarfile.open(fileobj=io.BytesIO(response.read()), mode="r:gz")
     prefix = f"flashinfer-{FLASHINFER_COMMIT}/{SUBDIR}/"

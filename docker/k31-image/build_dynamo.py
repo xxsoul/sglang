@@ -33,6 +33,15 @@ from pathlib import Path
 DYNAMO_VERSION = "1.6.0"
 DYNAMO_REPO = "https://github.com/ai-dynamo/dynamo"
 DYNAMO_COMMIT = "701da25292ecca8f64d770cc0b17d389200019a1"  # tag v1.6.0
+
+
+def resolve_rustup_init_url(env: dict) -> str:
+    # An unset build-arg is injected as an empty string; fall back on truthiness.
+    return env.get("K31_RUSTUP_INIT_URL") or "https://sh.rustup.rs"
+
+
+def resolve_dynamo_repo(env: dict) -> str:
+    return env.get("K31_DYNAMO_REPO") or DYNAMO_REPO
 FEATURES = "kv-indexer,slot-tracker,select-service,mm-routing,ais-forward-pass,request-trace-s3,nvtx"
 HERE = Path(__file__).resolve().parent
 PATCHES = sorted((HERE / "dynamo").glob("*.patch"))
@@ -111,8 +120,7 @@ def main() -> None:
             os.environ, RUSTUP_HOME=str(tmp / "rustup"), CARGO_HOME=str(tmp / "cargo")
         )
         env["PATH"] = f"{tmp / 'cargo/bin'}:{env['PATH']}"
-        # ARG-injected vars arrive as empty strings; fall back on truthiness.
-        rustup_init = os.environ.get("K31_RUSTUP_INIT_URL") or "https://sh.rustup.rs"
+        rustup_init = resolve_rustup_init_url(os.environ)
         run(
             "bash",
             "-c",
@@ -136,7 +144,7 @@ def main() -> None:
             "git",
             "clone",
             "--quiet",
-            os.environ.get("K31_DYNAMO_REPO") or DYNAMO_REPO,
+            resolve_dynamo_repo(os.environ),
             str(src),
             cwd=tmp,
         )
