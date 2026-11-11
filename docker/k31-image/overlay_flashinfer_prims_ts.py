@@ -1,18 +1,21 @@
-"""Overlay FlashInfer main's Prims-TS sparse MLA onto the image's FlashInfer 0.7.2.
+"""Overlay FlashInfer main's Prims-TS sparse MLA onto the image's FlashInfer 0.7.2/0.7.3.
 
 The opt-in `prims_ts` DSA backend needs FlashInfer's `flashinfer/attention/prims_ts/` from main
-784bfaf5 (flashinfer-ai/flashinfer #7410 and #7984; #8186 for the SM107 sparse MLA); 0.7.2 ships
-an older copy that fails at startup. This replaces only that directory's Python files (CuTe DSL;
-no csrc, AOT or jit-cache module changes). Everything else in FlashInfer, including the
-DynBlock-rebuilt modules, stays 0.7.2.
+784bfaf5 (flashinfer-ai/flashinfer #7410 and #7984; #8186 for the SM107 sparse MLA); the 0.7.2
+line ships an older copy that fails at startup, and v0.7.3 does not contain these updates either
+(24 release-side commits over 0.7.2, verified by blob-sha comparison of the prims_ts tree). This
+replaces only that directory's Python files (CuTe DSL; no csrc, AOT or jit-cache module changes).
+Everything else in FlashInfer, including the DynBlock-rebuilt modules, stays at its release.
 
 Idempotent: a marker records the overlaid tree, so a rerun is a no-op unless a reinstall
-replaced the files. Needs network access only when it overlays.
+replaced the files. Needs network access only when it overlays; K31_FLASHINFER_ARCHIVE_URL
+overrides the download for throttled networks.
 """
 
 import hashlib
 import io
 import json
+import os
 import sysconfig
 import tarfile
 import urllib.request
@@ -20,7 +23,9 @@ from importlib.metadata import version
 from pathlib import Path
 
 FLASHINFER_COMMIT = "784bfaf5bda80259d11a41955ab8c979914197f1"
-FLASHINFER_BASE_VERSION = "0.7.2"
+# 0.7.3 carries only release-side commits over 0.7.2; the supporting modules the
+# overlay touches are unchanged between the two.
+FLASHINFER_BASE_VERSIONS = frozenset({"0.7.2", "0.7.3"})
 SUBDIR = "flashinfer/attention/prims_ts"
 
 SITE = Path(sysconfig.get_paths()["purelib"])
@@ -37,10 +42,10 @@ def tree_sha256(root: Path) -> str:
 
 def main() -> None:
     installed = version("flashinfer-python")
-    if installed != FLASHINFER_BASE_VERSION:
+    if installed not in FLASHINFER_BASE_VERSIONS:
         raise SystemExit(
             f"flashinfer-python {installed} is installed; the Prims-TS overlay is validated on "
-            f"{FLASHINFER_BASE_VERSION} only"
+            f"{sorted(FLASHINFER_BASE_VERSIONS)} only"
         )
     if MARKER.exists():
         marker = json.loads(MARKER.read_text())
@@ -50,7 +55,12 @@ def main() -> None:
             print(f"Prims-TS already overlaid from flashinfer {FLASHINFER_COMMIT[:8]}")
             return
 
-    url = f"https://codeload.github.com/flashinfer-ai/flashinfer/tar.gz/{FLASHINFER_COMMIT}"
+    # codeload served the whole-repo tarball; mirror via K31_FLASHINFER_ARCHIVE_URL
+    # when github is throttled (any URL returning the same tar.gz works).
+    url = os.environ.get(
+        "K31_FLASHINFER_ARCHIVE_URL",
+        f"https://codeload.github.com/flashinfer-ai/flashinfer/tar.gz/{FLASHINFER_COMMIT}",
+    )
     with urllib.request.urlopen(url, timeout=600) as response:
         archive = tarfile.open(fileobj=io.BytesIO(response.read()), mode="r:gz")
     prefix = f"flashinfer-{FLASHINFER_COMMIT}/{SUBDIR}/"

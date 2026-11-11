@@ -48,11 +48,14 @@ ARG PIP_INDEX_URL=
 ARG K31_RUST_MIRROR=
 # e.g. https://ghproxy.net/https://github.com/ai-dynamo/dynamo
 ARG K31_DYNAMO_REPO=
+# e.g. https://ghproxy.net/https://codeload.github.com/flashinfer-ai/flashinfer/tar.gz/784bfaf5bda80259d11a41955ab8c979914197f1
+ARG K31_FLASHINFER_ARCHIVE_URL=
 
 RUN git config --global --add safe.directory /sgl-workspace/sglang
 
-# Helper scripts + dependency lock: stable layer, checkout-independent.
-COPY docker/k31-image/ /opt/k31-image/
+# Lock comes in its own COPY: it changes rarely, so the heavy pip layers stay
+# cached while the k31-image scripts around it are still being iterated.
+COPY docker/k31-image/k31-dev.lock /opt/k31-image/k31-dev.lock
 
 # Drop the nightly's own editable install; the runtime clone replaces it,
 # and pip install -e there must not inherit a stale upstream tree.
@@ -71,6 +74,8 @@ RUN export PIP_INDEX_URL="${PIP_INDEX_URL:-https://pypi.org/simple}" \
 RUN python3 -m venv /opt/sgl-eval-venv \
     && export PIP_INDEX_URL="${PIP_INDEX_URL:-https://pypi.org/simple}" \
     && /opt/sgl-eval-venv/bin/pip install -q sgl-eval==0.1.3
+
+COPY docker/k31-image/ /opt/k31-image/
 
 # FlashInfer DynBlock raised to 1024 experts (K3.1 has 896), jit-cache modules
 # rebuilt in place; Prims-TS overlay for --dsa-*-backend prims_ts; Dynamo runtime
