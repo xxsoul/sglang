@@ -111,7 +111,8 @@ def main() -> None:
             os.environ, RUSTUP_HOME=str(tmp / "rustup"), CARGO_HOME=str(tmp / "cargo")
         )
         env["PATH"] = f"{tmp / 'cargo/bin'}:{env['PATH']}"
-        rustup_init = os.environ.get("K31_RUSTUP_INIT_URL", "https://sh.rustup.rs")
+        # ARG-injected vars arrive as empty strings; fall back on truthiness.
+        rustup_init = os.environ.get("K31_RUSTUP_INIT_URL") or "https://sh.rustup.rs"
         run(
             "bash",
             "-c",
@@ -135,7 +136,7 @@ def main() -> None:
             "git",
             "clone",
             "--quiet",
-            os.environ.get("K31_DYNAMO_REPO", DYNAMO_REPO),
+            os.environ.get("K31_DYNAMO_REPO") or DYNAMO_REPO,
             str(src),
             cwd=tmp,
         )

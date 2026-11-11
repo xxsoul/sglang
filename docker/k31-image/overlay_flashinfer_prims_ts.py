@@ -56,10 +56,10 @@ def main() -> None:
             return
 
     # codeload serves the whole-repo tarball; mirror via K31_FLASHINFER_ARCHIVE_URL
-    # when github is throttled (any URL returning the same tar.gz works).
-    url = os.environ.get(
-        "K31_FLASHINFER_ARCHIVE_URL",
-        f"https://codeload.github.com/flashinfer-ai/flashinfer/tar.gz/{FLASHINFER_COMMIT}",
+    # when github is throttled (any URL returning the same tar.gz works). The ARG
+    # injects an empty string, so the default must ride on truthiness, not .get().
+    url = os.environ.get("K31_FLASHINFER_ARCHIVE_URL") or (
+        f"https://codeload.github.com/flashinfer-ai/flashinfer/tar.gz/{FLASHINFER_COMMIT}"
     )
     with urllib.request.urlopen(url, timeout=600) as response:
         archive = tarfile.open(fileobj=io.BytesIO(response.read()), mode="r:gz")
