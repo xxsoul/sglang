@@ -48,8 +48,9 @@ PATCHES = sorted((HERE / "dynamo").glob("*.patch"))
 SGLANG_PATCHER = HERE / "dynamo/dynamo_sglang_k31_patch.py"
 STAGE_HOOK = HERE / "dynamo/register_stage_model_card.py"
 STAGE_HOOK_MARKER = "# K3.1 image: stage the K3.1 model card on first use"
-# libclang-dev: bindgen in the nixl-sys crate needs libclang.
-APT_PACKAGES = ["protobuf-compiler", "pkg-config", "libssl-dev", "libclang-dev"]
+# libclang-dev: bindgen in the nixl-sys crate needs libclang. libprotobuf-dev ships the
+# well-known protos (/usr/include/google/protobuf/*.proto) the sidecar protoc builds import.
+APT_PACKAGES = ["protobuf-compiler", "libprotobuf-dev", "pkg-config", "libssl-dev", "libclang-dev"]
 
 SITE = Path(sysconfig.get_paths()["purelib"])
 CORE = SITE / "dynamo/_core.abi3.so"
