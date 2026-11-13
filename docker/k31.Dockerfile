@@ -449,7 +449,8 @@ RUN --mount=type=cache,target=/root/.cache/uv \
                uv pip install "/tmp/mscclpp[cuda13]"; \
                ;; \
            *) \
-               echo "Unsupported CUDA version for MSCCL++: ${CUDA_VERSION}" && exit 1 ;; \
+               echo "Unsupported CUDA version for MSCCL++: ${CUDA_VERSION}" && exit 1; \
+               ;; \
        esac \
     && rm -rf /tmp/mscclpp
 
