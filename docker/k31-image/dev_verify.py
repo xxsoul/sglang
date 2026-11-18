@@ -37,12 +37,9 @@ def run_build_time() -> None:
     import flashinfer
 
     _check(
-        Version(flashinfer.__version__).major == 0 and Version(
-            flashinfer.__version__
-        ).minor
-        == 7,
+        Version(flashinfer.__version__) >= Version("0.7.4"),
         f"flashinfer {flashinfer.__version__}",
-        f"flashinfer {flashinfer.__version__} (expected 0.7.x pinned by python/pyproject.toml)",
+        f"flashinfer {flashinfer.__version__} (expected >=0.7.4 pinned by python/pyproject.toml)",
     )
     import subprocess
 

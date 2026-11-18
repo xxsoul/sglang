@@ -4,8 +4,8 @@ Runs inside the image without a GPU, so it checks artifacts rather than loading 
 - the flashinfer DynBlock header patch is in place (patch_flashinfer.py), and every installed
   copy of the modules that include it was rebuilt from this header for 1024 experts
   (build_flashinfer_dynblock.py marker), so a flashinfer upgrade cannot silently undo it;
-- the FlashInfer Prims-TS overlay (overlay_flashinfer_prims_ts.py) and the patched Dynamo runtime
-  (build_dynamo.py) are installed and unchanged since they were made;
+- FlashInfer >=0.7.4 provides the native Prims-TS sparse MLA API, with no obsolete overlay;
+- the patched Dynamo runtime (build_dynamo.py) is installed and unchanged since it was made;
 - the Rust TreeCore extension loads -- only when sglang is installed; source-free
   images (k31-dev) defer that probe to dev_verify.py after the runtime install.
 """
@@ -17,7 +17,10 @@ import re
 import subprocess
 import sys
 import sysconfig
+from importlib.metadata import version
 from pathlib import Path
+
+from packaging.version import Version
 
 SITE = Path(sysconfig.get_paths()["purelib"])
 
@@ -55,23 +58,23 @@ for module_path in modules:
             f"{module_path} was not rebuilt from the patched header (build_flashinfer_dynblock.py)"
         )
 
-prims_ts = SITE / "flashinfer/attention/prims_ts"
-prims_marker_path = prims_ts / "k31-prims-ts.json"
-prims_marker = (
-    json.loads(prims_marker_path.read_text()) if prims_marker_path.exists() else {}
+flashinfer_version = version("flashinfer-python")
+prims_init = SITE / "flashinfer/attention/prims_ts/__init__.py"
+prims_source = prims_init.read_text() if prims_init.exists() else ""
+prims_api = (
+    "BatchSparseMLADecodePagedTSWrapper",
+    "get_prims_ts_sparse_mla_decode_workspace_size",
 )
-prims_digest = hashlib.sha256()
-for path in sorted(prims_ts.rglob("*.py")):
-    prims_digest.update(
-        str(path.relative_to(prims_ts)).encode() + b"\0" + path.read_bytes()
-    )
-prims_ok = prims_marker.get("tree_sha256") == prims_digest.hexdigest()
-print(
-    f"flashinfer Prims-TS: {'overlaid from ' + prims_marker['commit'][:8] if prims_ok else 'not overlaid'}"
+prims_ok = (
+    Version(flashinfer_version) >= Version("0.7.4")
+    and all(name in prims_source for name in prims_api)
+    and not prims_init.with_name("k31-prims-ts.json").exists()
 )
+print(f"flashinfer Prims-TS: native release {flashinfer_version}")
 if not prims_ok:
     errors.append(
-        "flashinfer prims_ts is not the overlaid tree (overlay_flashinfer_prims_ts.py)"
+        "flashinfer >=0.7.4 must provide the native Prims-TS sparse MLA API "
+        "without the obsolete pre-release overlay"
     )
 
 dynamo_core = SITE / "dynamo/_core.abi3.so"

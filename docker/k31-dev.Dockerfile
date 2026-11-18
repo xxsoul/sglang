@@ -49,8 +49,6 @@ ARG PIP_INDEX_URL=
 ARG K31_RUST_MIRROR=
 # e.g. https://ghproxy.net/https://github.com/ai-dynamo/dynamo
 ARG K31_DYNAMO_REPO=
-# e.g. https://ghproxy.net/https://codeload.github.com/flashinfer-ai/flashinfer/tar.gz/784bfaf5bda80259d11a41955ab8c979914197f1
-ARG K31_FLASHINFER_ARCHIVE_URL=
 
 RUN git config --global --add safe.directory /sgl-workspace/sglang
 
@@ -67,7 +65,8 @@ WORKDIR /sgl-workspace
 # Dependency floor: exact pins resolved from the branch's pyproject [test]
 # extra (docker/k31-image/k31-dev.lock). Regenerate with:
 #   uv pip compile python/pyproject.toml --extra test --python-version 3.12 \
-#     --no-emit-index-url -o docker/k31-image/k31-dev.lock
+#     --python-platform x86_64-manylinux_2_28 --no-emit-index-url \
+#     -o docker/k31-image/k31-dev.lock
 RUN export PIP_INDEX_URL="${PIP_INDEX_URL:-https://pypi.org/simple}" \
     && pip install --no-deps -r /opt/k31-image/k31-dev.lock
 
@@ -102,8 +101,7 @@ COPY docker/k31-image/patch_flashinfer.py \
 RUN python3 /opt/k31-image/patch_flashinfer.py \
     && python3 /opt/k31-image/build_flashinfer_dynblock.py
 
-COPY docker/k31-image/overlay_flashinfer_prims_ts.py /opt/k31-image/
-RUN python3 /opt/k31-image/overlay_flashinfer_prims_ts.py
+# FlashInfer >=0.7.4 already provides the required Prims-TS sparse MLA API.
 
 # COPY of a directory copies its contents, so the patches need their own
 # destination to keep the build_dynamo.py-relative dynamo/ layout.
@@ -118,8 +116,9 @@ RUN export PIP_INDEX_URL="${PIP_INDEX_URL:-https://pypi.org/simple}" \
        fi \
     && python3 /opt/k31-image/build_dynamo.py
 
-# Fails the build if a DynBlock module was not rebuilt or the overlays are
-# missing. Re-run verify_image.py any time (no GPU, no source tree needed);
+# Fails the build if a DynBlock module was not rebuilt, native Prims-TS is
+# missing, or the patched Dynamo runtime is absent. Re-run verify_image.py any
+# time (no GPU, no source tree needed);
 # dev_verify.py --build-time checks the dependency floor.
 COPY docker/k31-image/verify_image.py docker/k31-image/dev_verify.py /opt/k31-image/
 RUN python3 /opt/k31-image/verify_image.py \

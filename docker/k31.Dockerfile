@@ -5,7 +5,7 @@
 # Stage layout:
 #   1. base .. framework_final: the stages of docker/Dockerfile (the build the release
 #      workflow publishes as lmsysorg/sglang:v*) with BRANCH_TYPE locked to local, so the
-#      dependency floor (flashinfer 0.7.3, sgl-deep-gemm, sgl-flash-mla, mooncake, ...) is
+#      dependency floor (flashinfer 0.7.4, sgl-deep-gemm, sgl-flash-mla, mooncake, ...) is
 #      pinned by THIS checkout's python/pyproject.toml instead of drifting a release or
 #      nightly tag. Deliberately skipped, mirroring what the official runtime image never
 #      shipped: the devtools stage (gdb/vim/tmux/nsight) and the docker/configs dotfiles.
@@ -23,8 +23,7 @@
 #        1. Rust radix TreeCore   built by the editable install in framework_final
 #        2. FlashInfer DynBlock   TRT-LLM MoE routing jit-cache modules rebuilt for 1024
 #                                 experts (K3.1 has 896); needs INSTALL_FLASHINFER_JIT_CACHE=1
-#        3. FlashInfer Prims-TS   main 784bfaf5's prims_ts/ over 0.7.3, for --dsa-*-backend
-#                                 prims_ts
+#        3. FlashInfer Prims-TS   native sparse MLA from the 0.7.4 release (no source overlay)
 #        4. Dynamo 1.6.0          ai-dynamo-runtime rebuilt with the session-affinity patches
 #                                 and the K3.1 edits to dynamo.sglang
 #      FlashMLA and DeepGEMM come from the sgl-flash-mla / sgl-deep-gemm versions the
@@ -59,7 +58,7 @@ ARG PIP_DEFAULT_INDEX
 ARG UBUNTU_MIRROR
 ARG GITHUB_ARTIFACTORY=github.com
 ARG INSTALL_FLASHINFER_JIT_CACHE=1
-ARG FLASHINFER_VERSION=0.7.3
+ARG FLASHINFER_VERSION=0.7.4
 ARG MOONCAKE_VERSION=0.3.14
 ARG MSCCLPP_VERSION=sglang-v0.10.1
 
@@ -729,8 +728,7 @@ WORKDIR /sgl-workspace/sglang
 #   1. Rust radix TreeCore   already built at the framework_final editable install
 #   2. FlashInfer DynBlock   rebuilds the jit-cache routing modules for 1024 experts
 #                            (K3.1 has 896) from the header patched by patch_flashinfer.py
-#   3. FlashInfer Prims-TS   main 784bfaf5's prims_ts/ over 0.7.3, for --dsa-*-backend
-#                            prims_ts
+#   3. FlashInfer Prims-TS   provided natively by the 0.7.4 release
 #   4. Dynamo 1.6.0          ai-dynamo-runtime rebuilt with the session-affinity patches
 #                            and the K3.1 edits to dynamo.sglang
 # Each script is a no-op when its marker matches what is installed.
@@ -741,8 +739,6 @@ WORKDIR /sgl-workspace/sglang
 ARG K31_RUST_MIRROR=
 # e.g. https://ghproxy.net/https://github.com/ai-dynamo/dynamo
 ARG K31_DYNAMO_REPO=
-# e.g. https://ghproxy.net/https://codeload.github.com/flashinfer-ai/flashinfer/tar.gz/784bfaf5bda80259d11a41955ab8c979914197f1
-ARG K31_FLASHINFER_ARCHIVE_URL=
 
 RUN git config --global --add safe.directory /sgl-workspace/sglang \
     && git rev-parse HEAD > /sgl-workspace/sglang/.k31-source-commit
@@ -754,11 +750,7 @@ COPY docker/k31-image/patch_flashinfer.py \
 RUN python3 /opt/k31-image/patch_flashinfer.py \
     && python3 /opt/k31-image/build_flashinfer_dynblock.py
 
-COPY docker/k31-image/overlay_flashinfer_prims_ts.py /opt/k31-image/
-RUN if [ -n "${K31_FLASHINFER_ARCHIVE_URL:-}" ]; then \
-        export K31_FLASHINFER_ARCHIVE_URL="${K31_FLASHINFER_ARCHIVE_URL}"; \
-    fi \
-    && python3 /opt/k31-image/overlay_flashinfer_prims_ts.py
+# FlashInfer >=0.7.4 already provides the required Prims-TS sparse MLA API.
 
 # COPY of a directory copies its contents, so the patches need their own
 # destination to keep the build_dynamo.py-relative dynamo/ layout.
@@ -775,8 +767,8 @@ RUN if [ -n "${K31_DYNAMO_REPO:-}" ]; then \
        fi \
     && python3 /opt/k31-image/build_dynamo.py
 
-# Fails the build if a DynBlock module was not rebuilt, the Prims-TS overlay or the
-# patched Dynamo runtime is missing, or the Rust TreeCore does not load.
+# Fails the build if a DynBlock module was not rebuilt, native Prims-TS is missing
+# or stale-overlaid, the patched Dynamo runtime is missing, or TreeCore does not load.
 # Re-run any time: python3 /opt/k31-image/verify_image.py
 COPY docker/k31-image/verify_image.py /opt/k31-image/
 RUN python3 /opt/k31-image/verify_image.py \
