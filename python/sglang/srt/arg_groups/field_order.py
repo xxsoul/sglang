@@ -568,5 +568,11 @@ POSITIONAL_FIELD_ORDER = (
     "pp_min_chunked_prefill_size",
     "pp_chunk_overhead_tokens",
     "enable_flashmla_prefill_token_packing",
+    "speculative_dflash_draft_kv_ring",
+    "media_url_timeout",
+    "allow_local_media_files",
+    "layernorm_sp_min_tokens",
+    "paged_experts_host_memory_gb",
+    "_max_running_requests_explicitly_set",
 )
 # fmt: on
