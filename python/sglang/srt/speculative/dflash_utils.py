@@ -785,6 +785,7 @@ class DFlashDraftConfig:
     emb_dim: Optional[int]
     attention_sink_bias: bool = False
     attention_value_scale: Optional[float] = None
+    is_mla: bool = False
 
     @property
     def is_domino(self) -> bool:
@@ -1058,6 +1059,7 @@ def parse_dflash_draft_config(*, draft_hf_config: Any) -> DFlashDraftConfig:
         emb_dim=emb_dim,
         attention_sink_bias=attention_sink_bias,
         attention_value_scale=attention_value_scale,
+        is_mla=is_dflash_mla_draft_config(draft_hf_config),
     )
 
 
